@@ -24,7 +24,7 @@
                 <span>Lv{{ mon.level }}</span>
               </div>
               <div class="w-full bg-gray-200 h-3 border-2 border-gray-800 rounded-full mt-1 overflow-hidden">
-                <div :class="hpColorClass(mon.hp, mon.maxHp)"
+                <div :class="getHPColorClass(mon.hp, mon.maxHp)"
                      class="h-full"
                      :style="{ width: `${(mon.hp / mon.maxHp) * 100}%` }"></div>
               </div>
@@ -52,6 +52,20 @@
 
         <!-- Settings Tab -->
         <div v-if="activeTab === 'settings'" class="flex flex-col gap-6">
+          <!-- Audio Settings -->
+          <div>
+            <label class="font-black uppercase text-gray-800 block mb-2">Sound Settings</label>
+            <div class="flex items-center gap-4 bg-white border-4 border-gray-800 p-4 rounded-xl shadow-inner">
+              <button @click="toggleMute" class="text-3xl hover:scale-110 transition-transform">
+                {{ settingsStore.isMuted ? '🔇' : '🔊' }}
+              </button>
+              <input type="range" min="0" max="1" step="0.01"
+                     :value="settingsStore.volume"
+                     @input="updateVolume"
+                     class="flex-1 h-4 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+            </div>
+          </div>
+
           <div>
             <label class="font-black uppercase text-gray-800 block mb-2">TTS Voice Configuration</label>
             <select v-model="settingsStore.selectedVoiceName" @change="updateVoice"
@@ -61,9 +75,14 @@
               </option>
             </select>
           </div>
-          <button @click="testVoice" class="bg-blue-500 text-white p-3 rounded-xl border-b-4 border-blue-700 font-black uppercase tracking-wider active:translate-y-1">
-            Test Voice
-          </button>
+          <div class="grid grid-cols-2 gap-4">
+            <button @click="testVoice" class="bg-blue-500 text-white p-3 rounded-xl border-b-4 border-blue-700 font-black uppercase tracking-wider active:translate-y-1 text-xs">
+              Test Voice
+            </button>
+            <button @click="testSFX" class="bg-purple-500 text-white p-3 rounded-xl border-b-4 border-purple-700 font-black uppercase tracking-wider active:translate-y-1 text-xs">
+              Test SFX
+            </button>
+          </div>
         </div>
       </div>
 
@@ -82,7 +101,9 @@ import { ref } from 'vue';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { speech } from '../utils/speech';
-import { GAME_CONSTANTS } from '../utils/constants';
+import { audio } from '../utils/audio';
+import { GAME_CONSTANTS, SOUND_EFFECTS } from '../utils/constants';
+import { getHPColorClass } from '../utils/visuals';
 
 const playerStore = usePlayerStore();
 const settingsStore = useSettingsStore();
@@ -92,14 +113,23 @@ const updateVoice = (e) => {
   settingsStore.setVoice(e.target.value);
 };
 
+const updateVolume = (e) => {
+  settingsStore.setVolume(parseFloat(e.target.value));
+};
+
+const toggleMute = () => {
+  const willBeMuted = !settingsStore.isMuted;
+  settingsStore.toggleMute();
+  if (!willBeMuted) {
+    audio.playSound(SOUND_EFFECTS.CLICK);
+  }
+};
+
 const testVoice = () => {
   speech.speak('This is a test of the spelling notification system.');
 };
 
-const hpColorClass = (hp, max) => {
-  const ratio = hp / max;
-  if (ratio > 0.5) return 'bg-green-400';
-  if (ratio > 0.2) return 'bg-yellow-400';
-  return 'bg-red-400';
+const testSFX = () => {
+  audio.playSound(SOUND_EFFECTS.CLICK);
 };
 </script>

@@ -10,10 +10,12 @@
          }">
 
       <div v-for="tile in viewportTiles" :key="`${tile.x}-${tile.y}`"
-           class="absolute w-10 h-10 border border-black/5 flex items-center justify-center text-lg"
+           class="absolute w-10 h-10 border border-black/5 flex items-center justify-center text-lg transition-all duration-300"
            :class="getTileClass(tile.type)"
            :style="{ left: `${tile.x * 40}px`, top: `${tile.y * 40}px` }">
-        {{ getTileEmoji(tile.type) }}
+        <span v-if="getTrainerAt(tile.x, tile.y) && alertingTrainer === getTrainerAt(tile.x, tile.y).trainerId"
+              class="absolute -top-6 text-red-600 font-bold animate-bounce text-2xl">!</span>
+        {{ getTileEmoji(tile.type, tile.x, tile.y) }}
       </div>
     </div>
 
@@ -26,36 +28,15 @@
       </div>
     </div>
 
-    <!-- HUD -->
-    <div class="absolute top-6 left-6 bg-white/95 border-4 border-gray-800 p-4 rounded-xl shadow-xl flex flex-col gap-1">
-      <div class="text-sm font-black text-gray-800 uppercase tracking-tighter">
-        {{ areaConfig.name }}
-      </div>
-      <div class="text-[8px] font-bold text-gray-500 uppercase">
-        Party: {{ playerStore.party[0]?.name }} (Lv{{ playerStore.party[0]?.level }})
-      </div>
-    </div>
+    <MapHUD :areaName="areaConfig.name"
+            :leaderName="playerStore.party[0]?.name"
+            :leaderLevel="playerStore.party[0]?.level" />
 
     <div class="absolute bottom-6 left-6 bg-gray-800/80 text-white px-4 py-2 rounded-full text-[8px] font-bold uppercase tracking-widest hidden lg:block">
       WASD to Move | ESC for Menu
     </div>
 
-    <!-- Mobile Controls -->
-    <div v-if="isTouchDevice" class="absolute bottom-6 right-6 flex flex-col items-center gap-2 pointer-events-auto"
-         @mouseup="stopMovement" @mouseleave="stopMovement" @touchend="stopMovement" @touchcancel="stopMovement">
-      <div class="flex flex-col items-center gap-1">
-        <button @mousedown="startMovement('w')" @touchstart.prevent="startMovement('w')" class="w-12 h-12 bg-gray-800/90 text-white rounded-lg flex items-center justify-center text-xl shadow-lg active:scale-95">▲</button>
-        <div class="flex gap-1">
-          <button @mousedown="startMovement('a')" @touchstart.prevent="startMovement('a')" class="w-12 h-12 bg-gray-800/90 text-white rounded-lg flex items-center justify-center text-xl shadow-lg active:scale-95">◀</button>
-          <button @mousedown="startMovement('s')" @touchstart.prevent="startMovement('s')" class="w-12 h-12 bg-gray-800/90 text-white rounded-lg flex items-center justify-center text-xl shadow-lg active:scale-95">▼</button>
-          <button @mousedown="startMovement('d')" @touchstart.prevent="startMovement('d')" class="w-12 h-12 bg-gray-800/90 text-white rounded-lg flex items-center justify-center text-xl shadow-lg active:scale-95">▶</button>
-        </div>
-      </div>
-    </div>
-
-    <button v-if="isTouchDevice" @click="$emit('toggle-menu')" class="absolute top-6 right-6 w-12 h-12 bg-white border-4 border-gray-800 rounded-xl flex items-center justify-center text-xl shadow-xl active:scale-95">
-      📋
-    </button>
+    <MobileControls @start="startMovement" @stop="stopMovement" @toggle-menu="$emit('toggle-menu')" />
 
     <!-- Notifications -->
     <transition name="fade">
@@ -76,9 +57,16 @@ import { useBattleStore } from '../stores/battleStore';
 import { useVocabStore } from '../stores/vocabStore';
 import { useInputStore } from '../stores/inputStore';
 import { audio } from '../utils/audio';
-import { createMon, AREA_CONFIGS, TYPE_EMOJIS } from '../utils/gameData';
-import { GAME_CONSTANTS, SOUND_EFFECTS, BATTLE_TYPES, GENDERS, SKIN_TONES, INPUT_CONTEXTS } from '../utils/constants';
-import { MapGenerator, TILE_TYPES } from '../utils/mapGenerator';
+import { createMon } from '../utils/gameData';
+import { GAME_CONSTANTS, SOUND_EFFECTS, BATTLE_TYPES, GENDERS, SKIN_TONES, INPUT_CONTEXTS, TRANSITION_TYPES } from '../utils/constants';
+import { TILE_TYPES } from '../utils/mapGenerator';
+
+import { useMapManager } from '../composables/useMapManager';
+import { useTrainerAI } from '../composables/useTrainerAI';
+import { usePlayerMovement } from '../composables/usePlayerMovement';
+
+import MapHUD from './map/MapHUD.vue';
+import MobileControls from './map/MobileControls.vue';
 
 const playerStore = usePlayerStore();
 const battleStore = useBattleStore();
@@ -86,143 +74,25 @@ const vocabStore = useVocabStore();
 const inputStore = useInputStore();
 const engagedTrainers = new Set();
 
-const MAP_WIDTH = 100;
-const MAP_HEIGHT = 100;
-const VIEWPORT_SIZE = 15; // 15x15 tiles visible
+const VIEWPORT_SIZE = 15;
 
 const props = defineProps({
   isMenuOpen: Boolean
 });
 
-const emit = defineEmits(['toggle-menu']);
-
-const isTouchDevice = computed(() => {
-  if (typeof window === 'undefined') return false;
-  return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-});
-
-const playerEmoji = computed(() => {
-  const gender = playerStore.gender;
-  const tone = playerStore.skinTone;
-
-  const base = gender === GENDERS.BOY ? '👦' : '👧';
-  const modifiers = {
-    [SKIN_TONES.PALE]: '🏻',
-    [SKIN_TONES.FAIR]: '🏼',
-    [SKIN_TONES.NEUTRAL]: '🏽',
-    [SKIN_TONES.TAN]: '🏾',
-    [SKIN_TONES.DARK]: '🏿'
-  };
-  return base + (modifiers[tone] || '');
-});
+defineEmits(['toggle-menu']);
 
 const playerX = ref(playerStore.position.x);
 const playerY = ref(playerStore.position.y);
-const movementInterval = ref(null);
 
-const currentMapData = ref(null);
-const areaConfig = computed(() => AREA_CONFIGS[playerStore.currentArea]);
+const {
+  MAP_WIDTH, MAP_HEIGHT, currentMapData, areaConfig,
+  generateMap, getTileType, getTrainerAt, updateDiscovery
+} = useMapManager(playerStore);
 
-const generateMap = (isTransition = false, direction = null) => {
-  const gen = new MapGenerator(playerStore.mapSeed, MAP_WIDTH, MAP_HEIGHT);
-  currentMapData.value = gen.generate(playerStore.currentArea);
-
-  if (isTransition) {
-    if (direction === 'next') {
-      // Entering from previous area, should be at PREV transition
-      const entry = currentMapData.value.transitions.find(t => t.type === TRANSITION_TYPES.PREV);
-      if (entry) {
-        playerX.value = entry.x;
-        playerY.value = entry.y;
-      }
-    } else if (direction === 'prev') {
-      // Entering from next area, should be at NEXT transition
-      const entry = currentMapData.value.transitions.find(t => t.type === TRANSITION_TYPES.NEXT);
-      if (entry) {
-        playerX.value = entry.x;
-        playerY.value = entry.y;
-      }
-    }
-  } else {
-    // Initial load or whiteout - go to Spell Center
-    const sc = currentMapData.value.spellCenter;
-    if (sc) {
-      playerX.value = sc.x;
-      playerY.value = sc.y;
-    }
-  }
-  playerStore.updatePosition({ x: playerX.value, y: playerY.value });
-};
-
-watch(() => playerStore.currentArea, (newArea, oldArea) => {
-  const direction = newArea > oldArea ? 'next' : 'prev';
-  generateMap(true, direction);
-});
-watch(() => playerStore.mapSeed, generateMap);
-
-const viewportTiles = computed(() => {
-  if (!currentMapData.value) return [];
-  const tiles = [];
-  const half = Math.floor(VIEWPORT_SIZE / 2);
-  const startX = Math.max(0, Math.min(MAP_WIDTH - VIEWPORT_SIZE, playerX.value - half));
-  const startY = Math.max(0, Math.min(MAP_HEIGHT - VIEWPORT_SIZE, playerY.value - half));
-
-  for (let y = startY; y < startY + VIEWPORT_SIZE; y++) {
-    for (let x = startX; x < startX + VIEWPORT_SIZE; x++) {
-      tiles.push({ x, y, type: currentMapData.value.map[y][x] });
-    }
-  }
-  return tiles;
-});
-
-const getTileType = (x, y) => {
-  if (!currentMapData.value) return TILE_TYPES.WALL;
-  if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return TILE_TYPES.WALL;
-  return currentMapData.value.map[y][x];
-};
-
-const getTileClass = (type) => {
-  switch (type) {
-    case TILE_TYPES.SPELL_CENTER: return 'bg-red-50 border-red-300';
-    case TILE_TYPES.GRASS: return 'bg-green-300';
-    case TILE_TYPES.TRANSITION: return 'bg-yellow-100';
-    case TILE_TYPES.WATER: return 'bg-blue-300';
-    case TILE_TYPES.WALL: return 'bg-gray-800';
-    case TILE_TYPES.CAVE_WALL: return 'bg-amber-900';
-    case TILE_TYPES.BUILDING: return 'bg-blue-800';
-    case TILE_TYPES.PATH: return 'bg-orange-50';
-    case TILE_TYPES.EMPTY: return 'bg-gray-100';
-    default: return 'bg-green-100';
-  }
-};
-
-const getTileEmoji = (type) => {
-  switch (type) {
-    case TILE_TYPES.GRASS: return '🌿';
-    case TILE_TYPES.SPELL_CENTER: return '🏥';
-    case TILE_TYPES.TRAINER: return '👤';
-    case TILE_TYPES.TRANSITION: return '🚪';
-    case TILE_TYPES.WATER: return '💧';
-    case TILE_TYPES.BUILDING: return '🏠';
-    default: return '';
-  }
-};
-
-const isGrass = (x, y) => getTileType(x, y) === TILE_TYPES.GRASS;
-const isSpellCenter = (x, y) => getTileType(x, y) === TILE_TYPES.SPELL_CENTER;
-const isAreaTransition = (x, y) => getTileType(x, y) === TILE_TYPES.TRANSITION;
-const getTrainerData = (x, y) => {
-  if (getTileType(x, y) !== TILE_TYPES.TRAINER) return null;
-  const trainers = currentMapData.value.trainers;
-  const trainer = trainers.find(t => t.x === x && t.y === y);
-  if (!trainer) return null;
-
-  const index = trainers.indexOf(trainer);
-  const trainerId = `area${playerStore.currentArea}_${index}`;
-  if (playerStore.defeatedTrainers.includes(trainerId)) return null;
-
-  return { trainer, trainerId };
-};
+const { alertingTrainer, checkTrainerLOS, initiateTrainerApproach } = useTrainerAI(
+  playerStore, battleStore, currentMapData, playerX, playerY, getTileType
+);
 
 const handleInput = (e) => {
   if (battleStore.inBattle || props.isMenuOpen) return false;
@@ -249,11 +119,106 @@ const handleInput = (e) => {
   playerStore.updatePosition({ x: newX, y: newY });
 
   checkTriggers(newX, newY);
+
+  const triggeredTrainer = checkTrainerLOS(engagedTrainers);
+  if (triggeredTrainer) {
+    initiateTrainerApproach(triggeredTrainer.trainer, triggeredTrainer.trainerId, engagedTrainers, triggerTrainerBattle);
+  }
+
+  updateDiscovery(newX, newY);
   return true;
 };
 
+const { startMovement, stopMovement } = usePlayerMovement(playerX, playerY, handleInput);
+
+const playerEmoji = computed(() => {
+  const gender = playerStore.gender;
+  const tone = playerStore.skinTone;
+  const base = gender === GENDERS.BOY ? '👦' : '👧';
+  const modifiers = {
+    [SKIN_TONES.PALE]: '🏻',
+    [SKIN_TONES.FAIR]: '🏼',
+    [SKIN_TONES.NEUTRAL]: '🏽',
+    [SKIN_TONES.TAN]: '🏾',
+    [SKIN_TONES.DARK]: '🏿'
+  };
+  return base + (modifiers[tone] || '');
+});
+
+watch(() => playerStore.currentArea, (newArea, oldArea) => {
+  const direction = newArea > oldArea ? 'next' : 'prev';
+  generateMap(true, direction, playerX, playerY);
+});
+
+watch(() => playerStore.position, (newPos) => {
+  if (battleStore.inBattle) return;
+  if (newPos.x === playerStore.lastSpellCenter.x && newPos.y === playerStore.lastSpellCenter.y && playerStore.currentArea === playerStore.lastSpellCenter.area) {
+     if (playerX.value !== newPos.x || playerY.value !== newPos.y) {
+        playerX.value = newPos.x;
+        playerY.value = newPos.y;
+        generateMap(false, null, playerX, playerY);
+     }
+  }
+}, { deep: true });
+
+watch(() => playerStore.mapSeed, () => generateMap(false, null, playerX, playerY));
+
+const viewportTiles = computed(() => {
+  if (!currentMapData.value) return [];
+  const tiles = [];
+  const half = Math.floor(VIEWPORT_SIZE / 2);
+  const startX = Math.max(0, Math.min(MAP_WIDTH - VIEWPORT_SIZE, playerX.value - half));
+  const startY = Math.max(0, Math.min(MAP_HEIGHT - VIEWPORT_SIZE, playerY.value - half));
+
+  for (let y = startY; y < startY + VIEWPORT_SIZE; y++) {
+    for (let x = startX; x < startX + VIEWPORT_SIZE; x++) {
+      tiles.push({ x, y, type: currentMapData.value.map[y][x] });
+    }
+  }
+  return tiles;
+});
+
+const getTileClass = (type) => {
+  switch (type) {
+    case TILE_TYPES.SPELL_CENTER: return 'bg-red-50 border-red-300';
+    case TILE_TYPES.GRASS: return 'bg-green-300';
+    case TILE_TYPES.TRANSITION: return 'bg-yellow-100';
+    case TILE_TYPES.WATER: return 'bg-blue-300';
+    case TILE_TYPES.WALL: return 'bg-gray-800';
+    case TILE_TYPES.CAVE_WALL: return 'bg-amber-900';
+    case TILE_TYPES.BUILDING: return 'bg-blue-800';
+    case TILE_TYPES.PATH: return 'bg-orange-50';
+    case TILE_TYPES.EMPTY: return 'bg-gray-100';
+    default: return 'bg-green-100';
+  }
+};
+
+const getTileEmoji = (type, x, y) => {
+  switch (type) {
+    case TILE_TYPES.GRASS: return '🌿';
+    case TILE_TYPES.SPELL_CENTER: return '🏥';
+    case TILE_TYPES.TRAINER: {
+      const trainer = currentMapData.value.trainers.find(t => t.x === x && t.y === y);
+      if (!trainer) return '👤';
+      switch (trainer.direction) {
+        case 'up': return '🧒';
+        case 'down': return '👦';
+        case 'left': return '👧';
+        case 'right': return '🧒';
+        default: return '👤';
+      }
+    }
+    case TILE_TYPES.TRANSITION: return '🚪';
+    case TILE_TYPES.WATER: return '💧';
+    case TILE_TYPES.BUILDING: return '🏠';
+    default: return '';
+  }
+};
+
 const checkTriggers = (x, y) => {
-  if (isSpellCenter(x, y)) {
+  const type = getTileType(x, y);
+
+  if (type === TILE_TYPES.SPELL_CENTER) {
     playerStore.healParty();
     audio.playSound(SOUND_EFFECTS.HEAL);
     playerStore.notify('Your Spellingmon have been fully healed!');
@@ -262,35 +227,31 @@ const checkTriggers = (x, y) => {
     return;
   }
 
-  const trainerData = getTrainerData(x, y);
-  if (trainerData) {
-    const { trainer, trainerId } = trainerData;
-
-    if (engagedTrainers.has(trainerId)) return;
-    engagedTrainers.add(trainerId);
-
-    playerStore.notify(`${trainer.name}: "${trainer.dialog}"`);
-    setTimeout(() => {
-      triggerTrainerBattle(trainer, trainerId);
-      engagedTrainers.delete(trainerId);
-    }, GAME_CONSTANTS.TRAINER_ENGAGEMENT_DELAY_MS);
+  if (type === TILE_TYPES.TRAINER) {
+    const trainerData = getTrainerAt(x, y);
+    if (trainerData) {
+      const { trainer, trainerId } = trainerData;
+      if (engagedTrainers.has(trainerId)) return;
+      engagedTrainers.add(trainerId);
+      playerStore.notify(`${trainer.name}: "${trainer.dialog}"`);
+      setTimeout(() => {
+        triggerTrainerBattle(trainer, trainerId);
+        engagedTrainers.delete(trainerId);
+      }, GAME_CONSTANTS.TRAINER_ENGAGEMENT_DELAY_MS);
+    }
     return;
   }
 
-  if (isAreaTransition(x, y)) {
+  if (type === TILE_TYPES.TRANSITION) {
     const transition = currentMapData.value.transitions.find(t => t.x === x && t.y === y);
     if (transition.type === TRANSITION_TYPES.NEXT) {
-      const trainersInArea = currentMapData.value.trainers;
-      const allDefeated = trainersInArea.every((t, i) =>
+      const allDefeated = currentMapData.value.trainers.every((t, i) =>
         playerStore.defeatedTrainers.includes(`area${playerStore.currentArea}_${i}`)
       );
-
       if (!allDefeated) {
         playerStore.notify("You must defeat the area's trainer before moving on!");
-        // Bounce back
         return;
       }
-
       playerStore.unlockArea(playerStore.currentArea + 1);
       playerStore.setCurrentArea(playerStore.currentArea + 1);
     } else if (transition.type === TRANSITION_TYPES.PREV) {
@@ -299,58 +260,39 @@ const checkTriggers = (x, y) => {
     return;
   }
 
-  if (isGrass(x, y)) {
+  if (type === TILE_TYPES.GRASS) {
     if (Math.random() < GAME_CONSTANTS.GRASS_ENCOUNTER_CHANCE) {
       triggerWildBattle();
     }
   }
 };
 
-const startMovement = (key) => {
-  stopMovement();
-  handleInput({ key });
-  movementInterval.value = setInterval(() => {
-    handleInput({ key });
-  }, GAME_CONSTANTS.MOBILE_MOVEMENT_REPEAT_MS);
-};
-
-const stopMovement = () => {
-  if (movementInterval.value) {
-    clearInterval(movementInterval.value);
-    movementInterval.value = null;
-  }
-};
-
 const triggerWildBattle = async () => {
   await vocabStore.loadVocab(playerStore.currentArea);
   const species = areaConfig.value.encounters[Math.floor(Math.random() * areaConfig.value.encounters.length)];
-
-  // Use pre-generated level map
   const level = currentMapData.value.levelMap[playerY.value][playerX.value];
-
   const wildMon = createMon(species, level);
-
   const firstHealthyMon = playerStore.party.find(m => m.hp > 0) || playerStore.party[0];
   battleStore.startBattle(firstHealthyMon, wildMon, BATTLE_TYPES.WILD);
 };
 
 const triggerTrainerBattle = async (trainer, trainerId) => {
   await vocabStore.loadVocab(playerStore.currentArea);
-  const enemyMonCfg = trainer.party[0];
-  const enemyMon = createMon(enemyMonCfg.species, enemyMonCfg.level);
-
+  const party = trainer.party.map(p => ({ ...p, isDefeated: false }));
+  const firstMonCfg = party[0];
+  const enemyMon = createMon(firstMonCfg.species, firstMonCfg.level);
   const firstHealthyMon = playerStore.party.find(m => m.hp > 0) || playerStore.party[0];
-  battleStore.startBattle(firstHealthyMon, enemyMon, BATTLE_TYPES.TRAINER, trainer, trainerId);
+  battleStore.startBattle(firstHealthyMon, enemyMon, BATTLE_TYPES.TRAINER, trainer, trainerId, party);
 };
 
 onMounted(() => {
-  generateMap();
+  generateMap(false, null, playerX, playerY);
+  updateDiscovery(playerX.value, playerY.value);
   inputStore.addListener(INPUT_CONTEXTS.WORLD, handleInput, 5);
 });
 
 onUnmounted(() => {
   inputStore.removeListener(INPUT_CONTEXTS.WORLD);
-  stopMovement();
 });
 </script>
 

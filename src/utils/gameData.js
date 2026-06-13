@@ -11,6 +11,10 @@ export const MONS = {
   Slowspell: { name: 'Slowspell', type: 'Psychic', hp: 50, maxHp: 50, level: 20, exp: 0 },
 };
 
+export function calculateExpToNext(level) {
+  return Math.pow(level, 3);
+}
+
 export function createMon(species, level = 5) {
   const base = MONS[species] || MONS.Rattatext;
   const hp = Math.floor(base.maxHp * (level / base.level));
@@ -20,8 +24,16 @@ export function createMon(species, level = 5) {
     hp,
     maxHp: hp,
     exp: 0,
+    expToNext: calculateExpToNext(level),
     id: Math.random().toString(36).slice(2, 11)
   };
+}
+
+export function calculateExpGain(enemyMon, isTrainer) {
+  const baseExp = 50;
+  const levelBonus = enemyMon.level * 10;
+  const trainerBonus = isTrainer ? 1.5 : 1.0;
+  return Math.floor((baseExp + levelBonus) * trainerBonus);
 }
 
 export const AREA_CONFIGS = {

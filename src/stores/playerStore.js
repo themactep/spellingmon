@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { storage } from '../utils/storage';
 import { GAME_CONSTANTS } from '../utils/constants';
+import { calculateExpToNext } from '../utils/gameData';
 
 let saveTimeout = null;
 let notificationCounter = 0;
@@ -42,6 +43,14 @@ export const usePlayerStore = defineStore('player', {
           ...saved.lastSpellCenter,
         };
       }
+
+      // Ensure all party members have required stats for the new EXP system
+      mergedState.party.forEach(mon => {
+        if (mon.exp === undefined) mon.exp = 0;
+        if (mon.expToNext === undefined) {
+          mon.expToNext = calculateExpToNext(mon.level || 5);
+        }
+      });
 
       mergedState.ttsVerified = false; // Explicitly set to false every load
       return mergedState;
@@ -123,6 +132,44 @@ export const usePlayerStore = defineStore('player', {
     confirmTtsVerified() {
       this.ttsVerified = true;
       // We don't saveState() here because ttsVerified is deliberately excluded from persistence
+    },
+    moveMonToFront(index) {
+      if (index > 0 && index < this.party.length) {
+        const mon = this.party.splice(index, 1)[0];
+        this.party.unshift(mon);
+        this.saveState();
+      }
+    },
+    awardExp(totalAmount) {
+      const healthyMons = this.party.filter(m => m.hp > 0);
+      if (healthyMons.length === 0) return;
+
+      const splitAmount = Math.floor(totalAmount / healthyMons.length);
+      let remainder = totalAmount % healthyMons.length;
+
+      healthyMons.forEach((mon, i) => {
+        let amount = splitAmount;
+        if (i < remainder) amount += 1;
+
+        if (amount > 0) {
+          mon.exp += amount;
+          while (mon.exp >= mon.expToNext) {
+            this.levelUp(mon);
+          }
+        }
+      });
+      this.saveState();
+    },
+    levelUp(mon) {
+      mon.level++;
+      mon.exp -= mon.expToNext;
+      mon.expToNext = calculateExpToNext(mon.level);
+
+      const hpGain = 5 + Math.floor(Math.random() * 3);
+      mon.maxHp += hpGain;
+      mon.hp += hpGain;
+
+      this.notify(`${mon.name} grew to Level ${mon.level}!`);
     }
   }
 });

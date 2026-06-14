@@ -146,38 +146,63 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, onUnmounted } from 'vue';
 import { usePlayerStore } from '../stores/playerStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useInputStore } from '../stores/inputStore';
 import { speech } from '../utils/speech';
 import { audio } from '../utils/audio';
-import { GAME_CONSTANTS, SOUND_EFFECTS, MENU_TABS } from '../utils/constants';
+import { GAME_CONSTANTS, SOUND_EFFECTS, MENU_TABS, INPUT_CONTEXTS } from '../utils/constants';
 import { TYPE_EMOJIS } from '../utils/gameData';
 import { getHPColorClass } from '../utils/visuals';
+import { TILE_TYPES, MapGenerator } from '../utils/mapGenerator';
 
 const playerStore = usePlayerStore();
 const settingsStore = useSettingsStore();
+const inputStore = useInputStore();
 const activeTab = ref(MENU_TABS.PARTY);
 const mapCanvas = ref(null);
 
 const drawMap = () => {
   if (!mapCanvas.value || activeTab.value !== MENU_TABS.MAP) return;
   const ctx = mapCanvas.value.getContext('2d');
-  const discovered = playerStore.discoveredTiles[playerStore.currentArea] || [];
+  const discovered = new Set(playerStore.discoveredTiles[playerStore.currentArea] || []);
 
-  ctx.fillStyle = '#1f2937'; // Gray-800
-  ctx.fillRect(0, 0, 100, 100);
+  const MAP_SIZE = 100;
+  ctx.fillStyle = '#111827'; // bg-gray-900
+  ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
 
-  ctx.fillStyle = '#4ade80'; // Green-400
-  if (Array.isArray(discovered)) {
-    discovered.forEach(key => {
-      const [x, y] = key.split(',').map(Number);
-      ctx.fillRect(x, y, 1, 1);
-    });
+  // Generate map data for rendering structure
+  const gen = new MapGenerator(playerStore.mapSeed, MAP_SIZE, MAP_SIZE);
+  const mapData = gen.generate(playerStore.currentArea);
+
+  for (let y = 0; y < MAP_SIZE; y++) {
+    for (let x = 0; x < MAP_SIZE; x++) {
+      if (!discovered.has(`${x},${y}`)) continue;
+
+      const type = mapData.map[y][x];
+
+      if (type === TILE_TYPES.PATH) {
+        ctx.fillStyle = '#000000'; // Black lines for possible routes
+        ctx.fillRect(x, y, 1, 1);
+      } else if (type === TILE_TYPES.EMPTY) {
+        ctx.fillStyle = '#4b5563'; // Gray-600 boxes for rooms
+        ctx.fillRect(x, y, 1, 1);
+      } else if (type === TILE_TYPES.GRASS) {
+        ctx.fillStyle = '#15803d'; // Green-700
+        ctx.fillRect(x, y, 1, 1);
+      } else if (type === TILE_TYPES.SPELL_CENTER) {
+        ctx.fillStyle = '#ef4444'; // Red dot for Spelling Center
+        ctx.fillRect(x, y, 1, 1);
+      } else if (type === TILE_TYPES.TRANSITION) {
+        ctx.fillStyle = '#eab308'; // Yellow dot for entrance/exit
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
   }
 
   // Draw player
-  ctx.fillStyle = '#ef4444'; // Red-500
+  ctx.fillStyle = '#ef4444'; // Red dot
   ctx.fillRect(playerStore.position.x, playerStore.position.y, 1, 1);
 };
 
@@ -187,10 +212,31 @@ watch(activeTab, (newTab) => {
   }
 });
 
+const handleKeyDown = (e) => {
+  const tabs = Object.values(MENU_TABS);
+  const currentIndex = tabs.indexOf(activeTab.value);
+
+  if (e.key === 'ArrowRight') {
+    activeTab.value = tabs[(currentIndex + 1) % tabs.length];
+    audio.playSound(SOUND_EFFECTS.CLICK);
+    return true;
+  } else if (e.key === 'ArrowLeft') {
+    activeTab.value = tabs[(currentIndex - 1 + tabs.length) % tabs.length];
+    audio.playSound(SOUND_EFFECTS.CLICK);
+    return true;
+  }
+  return false;
+};
+
 onMounted(() => {
+  inputStore.addListener(INPUT_CONTEXTS.MENU, handleKeyDown, 10);
   if (activeTab.value === MENU_TABS.MAP) {
     setTimeout(drawMap, 0);
   }
+});
+
+onUnmounted(() => {
+  inputStore.removeListener(INPUT_CONTEXTS.MENU);
 });
 
 const updateVoice = (e) => {

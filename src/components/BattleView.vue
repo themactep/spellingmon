@@ -34,7 +34,7 @@
           </div>
           <!-- Hide sprite during the capture ball animation (when isCapturing and word is gone) -->
           <div class="text-4xl sm:text-6xl mt-2 sm:mt-4 transition-transform duration-300"
-               :class="{ 'scale-0 opacity-0': isCapturing && !battleStore.currentWord }">{{ TYPE_EMOJIS[battleStore.enemyMon.type] }}</div>
+               :class="{ 'scale-0 opacity-0': isCapturing && !battleStore.currentWord }">{{ battleStore.enemyMon.emoji }}</div>
         </div>
 
         <!-- Capture Ball Anim -->
@@ -47,7 +47,7 @@
       <div class="absolute bottom-4 left-4 sm:bottom-10 sm:left-10 flex flex-col items-start transition-all duration-300"
            :class="{ 'opacity-0 translate-y-10': playerFainted }">
         <div class="flex flex-col items-start" :class="{ 'animate-shake': playerShake }">
-          <div class="text-4xl sm:text-6xl mb-2 sm:mb-4 scale-x-[-1]">{{ TYPE_EMOJIS[battleStore.playerMon.type] }}</div>
+          <div class="text-4xl sm:text-6xl mb-2 sm:mb-4 scale-x-[-1]">{{ battleStore.playerMon.emoji }}</div>
           <div class="bg-white border-2 border-gray-800 p-1 sm:p-2 rounded-lg w-36 sm:w-48 shadow-md">
             <div class="flex flex-col font-bold leading-tight">
               <div class="flex justify-between items-start">
@@ -68,6 +68,27 @@
             </div>
             <div class="text-[8px] sm:text-xs text-right">{{ battleStore.playerMon.hp }} / {{ battleStore.playerMon.maxHp }}</div>
           </div>
+        </div>
+      </div>
+      <!-- Thrown Word Animation -->
+      <div v-if="thrownWord"
+           class="absolute z-50 pointer-events-none font-black text-xl sm:text-2xl text-blue-600 bg-white/90 px-4 py-2 rounded-lg border-4 border-blue-600 shadow-xl animate-throw"
+           :style="{
+             '--start-x': '10%',
+             '--start-y': '80%',
+             '--end-x': '70%',
+             '--end-y': '20%'
+           }">
+        {{ thrownWord }}
+      </div>
+
+      <!-- Mistake Feedback -->
+      <div v-if="mistakeWord"
+           class="absolute inset-0 z-50 flex items-center justify-center bg-red-600/20 backdrop-blur-sm">
+        <div class="bg-white border-8 border-red-600 p-8 rounded-3xl shadow-2xl text-center transform -rotate-2 animate-bounce">
+          <p class="text-red-600 font-black uppercase text-xl mb-2">Incorrect!</p>
+          <p class="text-gray-500 font-bold uppercase text-[10px] mb-1">Should have been:</p>
+          <p class="text-4xl font-black uppercase tracking-widest text-gray-800">{{ mistakeWord }}</p>
         </div>
       </div>
     </div>
@@ -106,11 +127,17 @@
                     @click="handleSwitch(mon)"
                     :disabled="mon.hp <= 0 || mon.id === battleStore.playerMon.id"
                     class="w-full mb-1 p-1 border-2 border-gray-800 rounded text-[10px] font-bold disabled:opacity-50"
-                    :class="mon.id === battleStore.playerMon.id ? 'bg-blue-100' : 'bg-white'">
+                    :class="[
+                      mon.id === battleStore.playerMon.id ? 'bg-blue-100' : 'bg-white',
+                      switchingSelectedIndex === i ? 'ring-4 ring-yellow-400 border-yellow-400' : ''
+                    ]">
               {{ mon.name }} (HP: {{ mon.hp }})
             </button>
           </div>
-          <button v-show="battleStore.playerMon.hp > 0" @click="isSwitching = false" class="text-xs text-red-500 font-bold mt-1">Cancel</button>
+          <button v-show="battleStore.playerMon.hp > 0"
+                  @click="isSwitching = false"
+                  :class="{ 'ring-4 ring-yellow-400': switchingSelectedIndex === playerStore.party.length }"
+                  class="text-xs text-red-500 font-bold mt-1">Cancel</button>
         </template>
 
         <template v-if="battleStore.currentWord">
@@ -134,7 +161,7 @@
             </div>
             <div>
               <button @click="repeatWord" class="text-blue-500 text-[10px] underline mb-1 block w-full">Listen Again</button>
-              <input v-model="userInput" @keyup.enter="submitSpelling"
+              <input v-model="userInput" @keydown.enter="submitSpelling"
                      ref="spellingInput"
                      @paste.prevent
                      class="w-full border-2 border-gray-800 p-1 text-center text-lg uppercase rounded-lg"
@@ -163,6 +190,7 @@ import { ref, onMounted, nextTick, watch, onUnmounted } from 'vue';
 import { useBattleStore } from '../stores/battleStore';
 import { useVocabStore } from '../stores/vocabStore';
 import { usePlayerStore } from '../stores/playerStore';
+import { useInputStore } from '../stores/inputStore';
 import { speech } from '../utils/speech';
 import { audio } from '../utils/audio';
 import { getHPColorClass } from '../utils/visuals';
@@ -173,6 +201,7 @@ import ExperienceView from './ExperienceView.vue';
 const battleStore = useBattleStore();
 const vocabStore = useVocabStore();
 const playerStore = usePlayerStore();
+const inputStore = useInputStore();
 
 const userInput = ref('');
 const isCapturing = ref(false);
@@ -192,6 +221,9 @@ const isFlashing = ref(false);
 const showResults = ref(false);
 const participatingMons = ref([]);
 const selectedIndex = ref(0);
+const switchingSelectedIndex = ref(0);
+const thrownWord = ref('');
+const mistakeWord = ref('');
 const spellingInput = ref(null);
 
 const triggerShake = (isEnemy) => {
@@ -349,12 +381,12 @@ const submitSpelling = () => {
   const word = typeof battleStore.currentWord === 'string' ? battleStore.currentWord : battleStore.currentWord.word;
   if (!word) return;
 
-  const isPower = timeLeft.value > (totalTime.value / 2);
-
   if (timerInterval) {
     clearInterval(timerInterval);
     timerInterval = null;
   }
+
+  const isPower = timeLeft.value > (totalTime.value / 2);
 
   const isCorrect = userInput.value.toLowerCase().trim() === word.toLowerCase().trim();
 
@@ -362,13 +394,20 @@ const submitSpelling = () => {
   battleStore.setTurn(false);
 
   if (isCorrect) {
+    thrownWord.value = word;
+    setTimeout(() => thrownWord.value = '', 1000);
+
     if (isCapturing.value) {
       handleCaptureSuccess(isPower);
     } else {
       handleAttackSuccess(isPower);
     }
   } else {
-    battleStore.log(`Incorrect! The word was "${word}".`);
+    mistakeWord.value = word.toUpperCase();
+    setTimeout(() => mistakeWord.value = '', 2000);
+
+    battleStore.log(`Incorrect!`);
+    battleStore.log(`Correct spelling: ${word.toUpperCase()}`);
     isCapturing.value = false;
     enemyTurn();
   }
@@ -378,19 +417,7 @@ const submitSpelling = () => {
 };
 
 const handleAttackSuccess = (isPower) => {
-  const basePower = isPower ? 60 : 30;
-  const wordDifficulty = battleStore.currentWord?.difficulty || 1;
-  const { damage, typeMod } = calculateDamage(battleStore.playerMon, battleStore.enemyMon, basePower, wordDifficulty);
-
-  if (isPower) {
-    battleStore.log("Super fast! Critical hit!");
-  }
-
-  battleStore.damageEnemy(damage);
-  battleStore.log(`Correct! Dealt ${damage} damage.`);
-  if (typeMod > 1) battleStore.log("It's super effective!");
-  if (typeMod < 1 && typeMod > 0) battleStore.log("It's not very effective...");
-  if (typeMod === 0) battleStore.log("It had no effect!");
+  battleStore.processAttack(isPower);
 
   audio.playSound(SOUND_EFFECTS.HIT);
   triggerShake(true);
@@ -407,14 +434,7 @@ const handleAttackSuccess = (isPower) => {
     battleStore.log(`Gained ${exp} EXP!`);
 
     if (battleStore.battleType === BATTLE_TYPES.TRAINER) {
-      // Find current mon in party and mark it
-      const currentMonInParty = battleStore.trainerParty.find(m => !m.isDefeated);
-      if (currentMonInParty) {
-        currentMonInParty.isDefeated = true;
-      }
-
-      // Check for next monster in trainer party
-      const nextMonCfg = battleStore.trainerParty.find(m => !m.isDefeated);
+      const nextMonCfg = battleStore.getNextTrainerMon();
       if (nextMonCfg) {
         setTimeout(() => {
           const nextMon = createMon(nextMonCfg.species, nextMonCfg.level);
@@ -483,44 +503,67 @@ const handleCaptureSuccess = (isPower) => {
 };
 
 const handleKeyDown = (e) => {
-  if (!battleStore.inBattle || showResults.value) return;
+  if (!battleStore.inBattle || showResults.value) return false;
 
   // If spelling word
   if (battleStore.currentWord) {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       // Prevent cancellation - word entry must be completed or timer must run out
-      e.preventDefault();
+      return true;
     }
     // Left/Right handled by input default behavior
-    return;
+    return false;
   }
 
-  if (isSwitching.value) return;
+  if (isSwitching.value) {
+    if (e.key === 'ArrowUp') {
+      switchingSelectedIndex.value = (switchingSelectedIndex.value - 1 + (playerStore.party.length + (battleStore.playerMon.hp > 0 ? 1 : 0))) % (playerStore.party.length + (battleStore.playerMon.hp > 0 ? 1 : 0));
+      audio.playSound(SOUND_EFFECTS.CLICK);
+      return true;
+    } else if (e.key === 'ArrowDown') {
+      switchingSelectedIndex.value = (switchingSelectedIndex.value + 1) % (playerStore.party.length + (battleStore.playerMon.hp > 0 ? 1 : 0));
+      audio.playSound(SOUND_EFFECTS.CLICK);
+      return true;
+    } else if (e.key === 'Enter') {
+      if (switchingSelectedIndex.value < playerStore.party.length) {
+        const mon = playerStore.party[switchingSelectedIndex.value];
+        if (mon.hp > 0 && mon.id !== battleStore.playerMon.id) {
+          handleSwitch(mon);
+        }
+      } else {
+        isSwitching.value = false;
+      }
+      return true;
+    }
+    return true;
+  }
 
   if (e.key === 'ArrowUp') {
     if (selectedIndex.value === 1 || selectedIndex.value === 2) selectedIndex.value = 0;
     else if (selectedIndex.value === 3) selectedIndex.value = 1;
     audio.playSound(SOUND_EFFECTS.CLICK);
-    e.preventDefault();
+    return true;
   } else if (e.key === 'ArrowDown') {
     if (selectedIndex.value === 0) selectedIndex.value = 1;
     else if (selectedIndex.value === 1 || selectedIndex.value === 2) selectedIndex.value = 3;
     audio.playSound(SOUND_EFFECTS.CLICK);
-    e.preventDefault();
+    return true;
   } else if (e.key === 'ArrowLeft') {
     if (selectedIndex.value === 2) selectedIndex.value = 1;
     audio.playSound(SOUND_EFFECTS.CLICK);
-    e.preventDefault();
+    return true;
   } else if (e.key === 'ArrowRight') {
     if (selectedIndex.value === 1) selectedIndex.value = 2;
     audio.playSound(SOUND_EFFECTS.CLICK);
-    e.preventDefault();
+    return true;
   } else if (e.key === 'Enter') {
     if (selectedIndex.value === 0) prepareAttack();
     else if (selectedIndex.value === 1) tryCapture();
     else if (selectedIndex.value === 2) isSwitching.value = true;
     else if (selectedIndex.value === 3) tryRun();
+    return true;
   }
+  return false;
 };
 
 const enemyTurn = () => {
@@ -566,8 +609,14 @@ watch(() => battleStore.currentWord, async (newVal) => {
   }
 });
 
+watch(isSwitching, (newVal) => {
+  if (newVal) {
+    switchingSelectedIndex.value = 0;
+  }
+});
+
 onMounted(async () => {
-  window.addEventListener('keydown', handleKeyDown);
+  inputStore.addListener(INPUT_CONTEXTS.BATTLE, handleKeyDown, 10);
 
   // Re-sync playerMon with playerStore party to avoid desync after reload
   if (battleStore.playerMon) {
@@ -589,7 +638,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
+  inputStore.removeListener(INPUT_CONTEXTS.BATTLE);
 });
 </script>
 
@@ -618,5 +667,15 @@ onUnmounted(() => {
 }
 .animate-capture {
   animation: capture var(--capture-duration) cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes throw {
+  0% { left: var(--start-x); top: var(--start-y); transform: scale(0.5) rotate(-10deg); opacity: 0; }
+  20% { opacity: 1; transform: scale(1.2) rotate(5deg); }
+  80% { opacity: 1; transform: scale(1) rotate(0deg); }
+  100% { left: var(--end-x); top: var(--end-y); transform: scale(0.2) rotate(20deg); opacity: 0; }
+}
+.animate-throw {
+  animation: throw 0.8s ease-in forwards;
 }
 </style>

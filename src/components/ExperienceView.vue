@@ -46,7 +46,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { useInputStore } from '../stores/inputStore';
 import { audio } from '../utils/audio';
 import { SOUND_EFFECTS } from '../utils/constants';
 
@@ -57,7 +58,7 @@ const props = defineProps({
   }
 });
 
-defineEmits(['continue']);
+const emit = defineEmits(['continue']);
 
 const results = ref([]);
 
@@ -95,7 +96,23 @@ const animateExp = async (mon) => {
   mon.displayExpPercent = (mon.exp / mon.expToNext) * 100;
 };
 
+const handleKeyDown = (e) => {
+  if (e.key === 'Enter') {
+    emit('continue');
+    return true;
+  }
+  return false;
+};
+
+onUnmounted(() => {
+  const inputStore = useInputStore();
+  inputStore.removeListener('experience');
+});
+
 onMounted(() => {
+  const inputStore = useInputStore();
+  inputStore.addListener('experience', handleKeyDown, 20);
+
   // Initialize display data
   results.value = props.participatingMons.map(mon => ({
     ...mon,

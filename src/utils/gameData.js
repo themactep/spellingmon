@@ -1,4 +1,4 @@
-import { MONSTER_TYPES } from './constants';
+import { MONSTER_TYPES, BIOMES } from './constants';
 
 export const SPECIES = {
   Grammander: 'Grammander',
@@ -346,22 +346,41 @@ export function calculateExpGain(enemyMon, isTrainer) {
   return Math.floor((baseExp * enemyMon.level / 7) * trainerBonus);
 }
 
+/**
+ * Linear algorithm for battle timer duration.
+ * Harder and longer words receive more time.
+ * @param {Object} wordObj - The word object
+ * @param {boolean} isCapture - Whether this is a capture attempt
+ * @returns {number} Duration in seconds
+ */
+export function calculateTimerDuration(wordObj, isCapture = false) {
+  const base = isCapture ? 6 : 8;
+  const diffMultiplier = isCapture ? 1.5 : 2;
+  const lengthMultiplier = isCapture ? 0.4 : 0.6;
+
+  const difficulty = wordObj.difficulty || 1;
+  const length = wordObj.word.length;
+
+  const time = base + (difficulty * diffMultiplier) + (length * lengthMultiplier);
+  return Math.round(time);
+}
+
 export const AREA_CONFIGS = {
   1: {
-    name: 'Route 1',
+    name: 'Alphabet Avenue',
     minLevel: 1,
-    maxLevel: 6,
+    maxLevel: 10,
+    biome: BIOMES.ROUTE,
     encounters: [
       SPECIES.Verminverb, SPECIES.Aviprosa, SPECIES.Caterspell, SPECIES.Weedword,
-      SPECIES.Puffpoet, SPECIES.Phraseling, SPECIES.Leeletter, SPECIES.Memocat,
-      SPECIES.Voicenat, SPECIES.Wingword, SPECIES.Odeish, SPECIES.Drafto, SPECIES.Essayve,
-      SPECIES.Grammander, SPECIES.Squirtspell, SPECIES.Bulbaword
+      SPECIES.Drafto, SPECIES.Essayve, SPECIES.Grammander, SPECIES.Squirtspell, SPECIES.Bulbaword
     ],
   },
   2: {
-    name: 'Route 2',
-    minLevel: 7,
-    maxLevel: 11,
+    name: 'Blend Boulevard',
+    minLevel: 11,
+    maxLevel: 18,
+    biome: BIOMES.TOWN,
     encounters: [
       SPECIES.Pikachart, SPECIES.Pointernote, SPECIES.Lexicat, SPECIES.Syntaxo,
       SPECIES.Metaphrase, SPECIES.Verbakuna, SPECIES.Foliofalcon, SPECIES.Slinkscript,
@@ -369,9 +388,10 @@ export const AREA_CONFIGS = {
     ],
   },
   3: {
-    name: 'Route 3',
-    minLevel: 12,
-    maxLevel: 16,
+    name: 'Syllable Springs',
+    minLevel: 19,
+    maxLevel: 28,
+    biome: BIOMES.WILDERNESS,
     encounters: [
       SPECIES.Primath, SPECIES.Rudeo, SPECIES.Burrowbook, SPECIES.Chopscript,
       SPECIES.Grammgloom, SPECIES.Paragraphid, SPECIES.Vowelmoth, SPECIES.Dictatone,
@@ -380,9 +400,10 @@ export const AREA_CONFIGS = {
     ],
   },
   4: {
-    name: 'Route 4',
-    minLevel: 17,
-    maxLevel: 21,
+    name: 'Suffix Summit',
+    minLevel: 29,
+    maxLevel: 38,
+    biome: BIOMES.CAVE,
     encounters: [
       SPECIES.Spellpoke, SPECIES.Venomverse, SPECIES.Clausefairy, SPECIES.Foxphrase,
       SPECIES.Balloonbard, SPECIES.Echoedit, SPECIES.Kerneloff, SPECIES.Citesey,
@@ -391,17 +412,56 @@ export const AREA_CONFIGS = {
     ],
   },
   5: {
-    name: 'Route 5',
-    minLevel: 22,
-    maxLevel: 30,
+    name: 'Prefix Peak',
+    minLevel: 39,
+    maxLevel: 48,
+    biome: BIOMES.WILDERNESS,
     encounters: [
       SPECIES.Spellpoke, SPECIES.Pikachart, SPECIES.Summarylax, SPECIES.Legendras,
-      SPECIES.Musetwo, SPECIES.Muse, SPECIES.Scrypt, SPECIES.Seaslang, SPECIES.Finfolio,
-      SPECIES.Datanite, SPECIES.Docair, SPECIES.Archizam, SPECIES.Champmanual, SPECIES.Textlem,
-      SPECIES.Gramgar, SPECIES.Haikunter, SPECIES.Outlinix, SPECIES.Memowak, SPECIES.Wordweeze,
-      SPECIES.Bookbro, SPECIES.Houndhaiku, SPECIES.Gorillagram, SPECIES.Paperwrath, SPECIES.Verseon, SPECIES.Jingleon, SPECIES.Noteon,
+      SPECIES.Archizam, SPECIES.Champmanual, SPECIES.Textlem,
+      SPECIES.Bookbro, SPECIES.Houndhaiku, SPECIES.Gorillagram, SPECIES.Paperwrath,
       SPECIES.Spelchar, SPECIES.Blastlexis, SPECIES.Venusterm, SPECIES.Butterfluent, SPECIES.Quillquote, SPECIES.Toxiterm,
       SPECIES.Citable, SPECIES.Poetcat, SPECIES.Quackquote, SPECIES.Pagewhirl
+    ],
+  },
+  6: {
+    name: 'Homophone Harbor',
+    minLevel: 49,
+    maxLevel: 58,
+    biome: BIOMES.TOWN,
+    encounters: [
+      SPECIES.Gramgar, SPECIES.Haikunter, SPECIES.Outlinix, SPECIES.Memowak, SPECIES.Wordweeze,
+      SPECIES.Scrypt, SPECIES.Seaslang, SPECIES.Finfolio, SPECIES.Docair,
+      SPECIES.Verseon, SPECIES.Jingleon, SPECIES.Noteon
+    ],
+  },
+  7: {
+    name: 'Loanword Labyrinth',
+    minLevel: 59,
+    maxLevel: 68,
+    biome: BIOMES.CAVE,
+    encounters: [
+      SPECIES.Musetwo, SPECIES.Muse, SPECIES.Datanite, SPECIES.Docair,
+      SPECIES.Legendras, SPECIES.Summarylax, SPECIES.Archizam, SPECIES.Champmanual, SPECIES.Textlem
+    ],
+  },
+  8: {
+    name: 'Phoneme Forest',
+    minLevel: 69,
+    maxLevel: 80,
+    biome: BIOMES.FOREST,
+    encounters: [
+      SPECIES.Musetwo, SPECIES.Muse, SPECIES.Datanite, SPECIES.Scrypt, SPECIES.Seaslang,
+      SPECIES.Gramgar, SPECIES.Toxiterm, SPECIES.Venusterm, SPECIES.Blastlexis, SPECIES.Spelchar
+    ],
+  },
+  9: {
+    name: 'Etymology Elite',
+    minLevel: 81,
+    maxLevel: 100,
+    biome: BIOMES.TOWN,
+    encounters: [
+      SPECIES.Musetwo, SPECIES.Muse, SPECIES.Datanite, SPECIES.Archizam, SPECIES.Champmanual, SPECIES.Textlem
     ],
   },
 };

@@ -1,6 +1,6 @@
 <template>
-  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div class="bg-white border-8 border-gray-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+  <div class="fixed inset-0 bg-gray-900 z-50 flex flex-col">
+    <div class="flex-1 flex flex-col overflow-hidden max-w-4xl mx-auto w-full bg-white sm:border-x-8 sm:border-gray-800 shadow-2xl">
       <!-- Header Tabs -->
       <div class="flex bg-gray-100 border-b-8 border-gray-800 font-bold uppercase text-xs">
         <button
@@ -9,7 +9,7 @@
           class="flex-1 py-4 transition-colors"
           :class="[
             activeTab === tab ? 'bg-white text-blue-600' : 'text-gray-500 hover:bg-gray-200',
-            tabSelectedIndex === i ? 'ring-inset ring-4 ring-yellow-400' : ''
+            tabSelectedIndex === i ? 'ring-inset ring-8 ring-yellow-400' : ''
           ]"
           @click="activeTab = tab"
         >
@@ -80,6 +80,59 @@
           </div>
         </div>
 
+        <!-- Spellingdex Tab -->
+        <div
+          v-if="activeTab === MENU_TABS.SPELLINGDEX"
+          class="flex flex-col gap-6"
+        >
+          <div
+            v-for="area in GAME_CONSTANTS.MAX_AREAS"
+            :key="area"
+            class="space-y-3"
+          >
+            <div class="flex justify-between items-end border-b-4 border-gray-200 pb-1">
+              <h3 class="font-black uppercase text-gray-800 text-sm">
+                Route {{ area }}
+              </h3>
+              <div class="flex gap-4 items-center">
+                <span class="text-[9px] font-bold text-gray-500">
+                  Seen: {{ playerStore.discoveredWords[area]?.length || 0 }}
+                </span>
+                <span class="text-[9px] font-bold text-green-600">
+                  Mastered: {{ playerStore.masteredWords[area]?.length || 0 }}
+                </span>
+              </div>
+            </div>
+
+            <div
+              v-if="playerStore.unlockedAreas.includes(area)"
+              class="grid grid-cols-2 sm:grid-cols-3 gap-2"
+            >
+              <div
+                v-for="(word, idx) in vocabStore.vocabData[area] || []"
+                :key="idx"
+                class="p-2 border-2 rounded-lg text-[10px] font-bold uppercase text-center transition-colors"
+                :class="getWordDexClass(area, word.word)"
+              >
+                {{ getWordDexDisplay(area, word.word) }}
+              </div>
+              <div
+                v-if="!vocabStore.vocabData[area]"
+                class="col-span-full text-center py-4 text-gray-400 text-[10px] italic"
+              >
+                Enter this area to see word list
+              </div>
+            </div>
+            <div
+              v-else
+              class="p-8 bg-gray-100 border-4 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center gap-2 opacity-50"
+            >
+              <span class="text-2xl">🔒</span>
+              <span class="font-bold text-[10px] text-gray-500 uppercase tracking-widest">Area Locked</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Map Tab -->
         <div
           v-if="activeTab === MENU_TABS.MAP"
@@ -88,7 +141,7 @@
           <h3 class="font-black uppercase text-gray-800 w-full shrink-0">
             Area Map (Discovered)
           </h3>
-          <div class="relative bg-gray-900 w-full aspect-square max-w-[400px] border-8 border-gray-800 rounded-2xl overflow-hidden flex items-center justify-center shadow-inner shrink-0">
+          <div class="relative bg-gray-900 w-full aspect-square max-w-[500px] border-8 border-gray-800 rounded-2xl overflow-hidden flex items-center justify-center shadow-inner shrink-0">
             <canvas
               ref="mapCanvas"
               width="100"
@@ -98,10 +151,10 @@
             />
             <!-- Player pulse indicator -->
             <div
-              class="absolute w-4 h-4 bg-red-500 rounded-full animate-ping pointer-events-none opacity-75"
+              class="absolute w-6 h-6 bg-red-500 rounded-full animate-ping pointer-events-none opacity-75"
               :style="{
-                left: `calc(${(playerStore.position.x / 100) * 100}% - 8px)`,
-                top: `calc(${(playerStore.position.y / 100) * 100}% - 8px)`
+                left: `calc(${(playerStore.position.x / 100) * 100}% - 12px)`,
+                top: `calc(${(playerStore.position.y / 100) * 100}% - 12px)`
               }"
             />
           </div>
@@ -177,7 +230,7 @@
               class="flex items-center gap-4 bg-white border-4 border-gray-800 p-4 rounded-xl shadow-inner"
             >
               <button
-                :class="{ 'ring-4 ring-yellow-400 rounded-full': contentSelectedIndex === 2 }"
+                :class="{ 'ring-8 ring-yellow-400 rounded-full': contentSelectedIndex === 2 }"
                 class="text-3xl hover:scale-110 transition-transform"
                 @click="toggleMute"
               >
@@ -189,7 +242,7 @@
                 max="1"
                 step="0.01"
                 :value="settingsStore.volume"
-                :class="{ 'ring-4 ring-yellow-400': contentSelectedIndex === 1 }"
+                :class="{ 'ring-8 ring-yellow-400': contentSelectedIndex === 1 }"
                 class="flex-1 h-4 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 @input="updateVolume"
               >
@@ -201,7 +254,7 @@
             <select
               v-model="settingsStore.selectedVoiceName"
               :class="{ 'ring-8 ring-yellow-400 border-yellow-400': contentSelectedIndex === 0 }"
-              class="w-full border-4 border-gray-800 p-3 rounded-xl bg-white font-bold text-gray-700 outline-none focus:ring-4 focus:ring-blue-300"
+              class="w-full border-4 border-gray-800 p-3 rounded-xl bg-white font-bold text-gray-700 outline-none focus:ring-8 focus:ring-blue-300"
               @change="updateVoice"
             >
               <option
@@ -233,23 +286,17 @@
       </div>
 
       <!-- Footer -->
-      <div class="p-6 border-t-8 border-gray-800 bg-gray-100 flex justify-between">
+      <div class="p-4 sm:p-6 border-t-8 border-gray-800 bg-gray-100 flex flex-col sm:flex-row gap-4 justify-between shrink-0">
         <button
-          :class="{ 'ring-8 ring-yellow-400': (activeTab === MENU_TABS.PARTY && contentSelectedIndex === playerStore.party.length) ||
-            (activeTab === MENU_TABS.PROGRESS && contentSelectedIndex === GAME_CONSTANTS.MAX_AREAS) ||
-            (activeTab === MENU_TABS.MAP && contentSelectedIndex === 0) ||
-            (activeTab === MENU_TABS.SETTINGS && contentSelectedIndex === 5) }"
+          :class="{ 'ring-8 ring-yellow-400': isLogoutSelected }"
           class="bg-gray-500 text-white px-6 py-3 rounded-xl border-b-4 border-gray-700 font-black uppercase tracking-widest hover:bg-gray-600 active:translate-y-1 text-xs"
           @click="playerStore.logout()"
         >
           Log Out
         </button>
         <button
-          :class="{ 'ring-8 ring-yellow-400': (activeTab === MENU_TABS.PARTY && contentSelectedIndex === playerStore.party.length + 1) ||
-            (activeTab === MENU_TABS.PROGRESS && contentSelectedIndex === GAME_CONSTANTS.MAX_AREAS + 1) ||
-            (activeTab === MENU_TABS.MAP && contentSelectedIndex === 1) ||
-            (activeTab === MENU_TABS.SETTINGS && contentSelectedIndex === 6) }"
-          class="bg-red-500 text-white px-8 py-3 rounded-xl border-b-4 border-red-700 font-black uppercase tracking-widest hover:bg-red-600 active:translate-y-1"
+          :class="{ 'ring-8 ring-yellow-400': isCloseSelected }"
+          class="bg-red-500 text-white px-8 py-3 rounded-xl border-b-4 border-red-700 font-black uppercase tracking-widest hover:bg-red-600 active:translate-y-1 text-center"
           @click="$emit('close')"
         >
           Back to Game
@@ -260,23 +307,43 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, onUnmounted, computed } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { usePlayerStore } from '../stores/playerStore';
+import { useVocabStore } from '../stores/vocabStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useInputStore } from '../stores/inputStore';
 import { useKeyboardNavigation } from '../composables/useKeyboardNavigation';
 import { speech } from '../utils/speech';
 import { audio } from '../utils/audio';
-import { GAME_CONSTANTS, SOUND_EFFECTS, MENU_TABS, INPUT_CONTEXTS, INPUT_PRIORITIES } from '../utils/constants';
+import { GAME_CONSTANTS, SOUND_EFFECTS, MENU_TABS, INPUT_PRIORITIES, TRANSITION_TYPES } from '../utils/constants';
 import { TYPE_EMOJIS } from '../utils/gameData';
 import { getHPColorClass } from '../utils/visuals';
 import { TILE_TYPES, MapGenerator } from '../utils/mapGenerator';
 
 const playerStore = usePlayerStore();
+const vocabStore = useVocabStore();
 const settingsStore = useSettingsStore();
-const inputStore = useInputStore();
 const activeTab = ref(MENU_TABS.PARTY);
 const mapCanvas = ref(null);
+
+const getWordDexDisplay = (area, word) => {
+  const mastered = playerStore.masteredWords[area] || [];
+  const discovered = playerStore.discoveredWords[area] || [];
+  const normalized = word.toLowerCase().trim();
+
+  if (mastered.includes(normalized)) return word;
+  if (discovered.includes(normalized)) return word; // Show word but grayed out
+  return '???';
+};
+
+const getWordDexClass = (area, word) => {
+  const mastered = playerStore.masteredWords[area] || [];
+  const discovered = playerStore.discoveredWords[area] || [];
+  const normalized = word.toLowerCase().trim();
+
+  if (mastered.includes(normalized)) return 'bg-green-100 border-green-400 text-green-700';
+  if (discovered.includes(normalized)) return 'bg-gray-200 border-gray-400 text-gray-600 opacity-70';
+  return 'bg-gray-100 border-gray-300 text-gray-400';
+};
 
 const drawMap = () => {
   if (!mapCanvas.value || activeTab.value !== MENU_TABS.MAP) return;
@@ -291,6 +358,10 @@ const drawMap = () => {
   const gen = new MapGenerator(playerStore.mapSeed, MAP_SIZE, MAP_SIZE);
   const mapData = gen.generate(playerStore.currentArea);
 
+  ctx.font = '8px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
   for (let y = 0; y < MAP_SIZE; y++) {
     for (let x = 0; x < MAP_SIZE; x++) {
       if (!discovered.has(`${x},${y}`)) continue;
@@ -298,20 +369,22 @@ const drawMap = () => {
       const type = mapData.map[y][x];
 
       if (type === TILE_TYPES.PATH) {
-        ctx.fillStyle = '#000000'; // Black lines for possible routes
+        ctx.fillStyle = '#e5e7eb'; // Gray-200
         ctx.fillRect(x, y, 1, 1);
       } else if (type === TILE_TYPES.EMPTY) {
-        ctx.fillStyle = '#4b5563'; // Gray-600 boxes for rooms
+        ctx.fillStyle = '#9ca3af'; // Gray-400
         ctx.fillRect(x, y, 1, 1);
       } else if (type === TILE_TYPES.GRASS) {
-        ctx.fillStyle = '#15803d'; // Green-700
-        ctx.fillRect(x, y, 1, 1);
+        ctx.fillText('🌿', x, y);
       } else if (type === TILE_TYPES.SPELL_CENTER) {
-        ctx.fillStyle = '#ef4444'; // Red dot for Spelling Center
-        ctx.fillRect(x, y, 1, 1);
+        ctx.fillText('🏥', x, y);
       } else if (type === TILE_TYPES.TRANSITION) {
-        ctx.fillStyle = '#eab308'; // Yellow dot for entrance/exit
-        ctx.fillRect(x, y, 1, 1);
+        const transition = mapData.transitions.find(t => t.x === x && t.y === y);
+        if (transition?.type === TRANSITION_TYPES.NEXT) {
+          ctx.fillText('🔼', x, y);
+        } else {
+          ctx.fillText('🔽', x, y);
+        }
       }
     }
   }
@@ -348,11 +421,12 @@ watch(currentTabIndex, (newIdx) => {
 });
 
 // Content Navigation
-const { selectedIndex: contentSelectedIndex, reset: resetContentNav } = useKeyboardNavigation({
+const { selectedIndex: contentSelectedIndex } = useKeyboardNavigation({
   id: 'menu-content',
   priority: INPUT_PRIORITIES.MENU,
   maxIndex: computed(() => {
     if (activeTab.value === MENU_TABS.PARTY) return playerStore.party.length + 2; // + Logout + Close
+    if (activeTab.value === MENU_TABS.SPELLINGDEX) return 2; // Only Logout/Close selectable
     if (activeTab.value === MENU_TABS.PROGRESS) return GAME_CONSTANTS.MAX_AREAS + 2;
     if (activeTab.value === MENU_TABS.MAP) return 2;
     if (activeTab.value === MENU_TABS.SETTINGS) return 7; // Voice, Volume, Mute, Test Voice, Test SFX, + Logout/Close
@@ -360,9 +434,10 @@ const { selectedIndex: contentSelectedIndex, reset: resetContentNav } = useKeybo
   }),
   onConfirm: (idx) => {
     const logoutIdx = (activeTab.value === MENU_TABS.PARTY ? playerStore.party.length :
+                      (activeTab.value === MENU_TABS.SPELLINGDEX ? 0 :
                       (activeTab.value === MENU_TABS.PROGRESS ? GAME_CONSTANTS.MAX_AREAS :
                       (activeTab.value === MENU_TABS.MAP ? 0 :
-                      (activeTab.value === MENU_TABS.SETTINGS ? 5 : 0))));
+                      (activeTab.value === MENU_TABS.SETTINGS ? 5 : 0)))));
     const closeIdx = logoutIdx + 1;
 
     if (idx === logoutIdx) playerStore.logout();
@@ -384,10 +459,32 @@ const { selectedIndex: contentSelectedIndex, reset: resetContentNav } = useKeybo
 
 const emit = defineEmits(['close']);
 
+const isLogoutSelected = computed(() => {
+  const logoutIdx = (activeTab.value === MENU_TABS.PARTY ? playerStore.party.length :
+                    (activeTab.value === MENU_TABS.SPELLINGDEX ? 0 :
+                    (activeTab.value === MENU_TABS.PROGRESS ? GAME_CONSTANTS.MAX_AREAS :
+                    (activeTab.value === MENU_TABS.MAP ? 0 :
+                    (activeTab.value === MENU_TABS.SETTINGS ? 5 : 0)))));
+  return contentSelectedIndex.value === logoutIdx;
+});
+
+const isCloseSelected = computed(() => {
+  const closeIdx = (activeTab.value === MENU_TABS.PARTY ? playerStore.party.length + 1 :
+                   (activeTab.value === MENU_TABS.SPELLINGDEX ? 1 :
+                   (activeTab.value === MENU_TABS.PROGRESS ? GAME_CONSTANTS.MAX_AREAS + 1 :
+                   (activeTab.value === MENU_TABS.MAP ? 1 :
+                   (activeTab.value === MENU_TABS.SETTINGS ? 6 : 1)))));
+  return contentSelectedIndex.value === closeIdx;
+});
+
 onMounted(() => {
   if (activeTab.value === MENU_TABS.MAP) {
     setTimeout(drawMap, 0);
   }
+  // Load vocab for all unlocked areas to show in Spellingdex
+  playerStore.unlockedAreas.forEach(area => {
+    vocabStore.loadVocab(area);
+  });
 });
 
 const updateVoice = (e) => {
